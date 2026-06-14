@@ -1,6 +1,6 @@
 ---
 title: "Resolución Actividad 3 máster Bioinformática UNIR (2026)"
-author: "Equipo R"
+author: "Celia Medrano Rodríguez"
 date: "`r Sys.Date()`"
 output:
   html_document:
@@ -51,7 +51,7 @@ En concreto, se llevará a cabo:
   Declaramos el entorno de trabajo en la carpeta concreta del equipo del creador e instalamos los paquetes y librerías que van a ser necesarios para las operaciones.
 
 ```{r Establecimiento entorno}
-setwd("C:/Users/alber/Desktop/UNIR 26 -27/Primer cuatrimestre/Estadística y R para las Ciencias de la Salud/Actividades/Actividad grupal/Trabajos")
+setwd("/Users/celiamedrano/Documents/2026_MUBI/3-Estadística\ y\ R/Actividades/mubio02_act3")
 
 ## Compruebo que la ruta sea correcta.
 
