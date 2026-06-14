@@ -1,0 +1,17 @@
+#Interpretación de la tabla PCA de cargas
+#Las cargas indican la relación de cada gen con los componentes principales. 
+#Cuanto mayor es el valor absoluto de la carga, mayor es la importancia del gen para definir ese componente. 
+#El signo indica la dirección de la asociación, pero no su intensidad.
+
+#En PC1 destacaron principalmente POMC con una carga de 0,801, ANO4 con 0,783, LEPR con 0,721, ADCY3 con 0,712, PCSK1 con 0,627 y SH2B1 con 0,579. 
+#Todos presentan cargas positivas, por lo que tienden a aumentar conjuntamente a medida que aumenta el score de PC1.
+#Este componente parece representar un patrón común de expresión definido principalmente por estos genes.
+
+#En PC2, los genes con mayor peso fueron NTRK2 (0,597) y CADM2 (0,581) en sentido positivo, mientras que NRP1 (-0,495), PHIP (-0,445) y FTO (-0,443) presentaron cargas negativas. 
+#Esto indica que PC2 contrapone dos grupos de genes con comportamientos opuestos.
+
+#En PC3 destacó MRAP2 con una carga negativa de -0,656, mientras que CREBRF (0,511) y FTO (0,470) presentaron cargas positivas. 
+#En PC4, el gen más representativo fue ROBO1 (-0,630), seguido de ANKRD27, MC4R, DPP9 y PPARG.
+#Para PC5 destacaron DPP9, GIPR y BDNF, mientras que PC6 estuvo principalmente definida por GIPR, GPR75, CADM1 y NRP2.
+
+#En conjunto, las cargas muestran que cada componente resume patrones diferentes de expresión y que no todos los genes contribuyen de la misma manera a la estructura multivariante del dataset.
