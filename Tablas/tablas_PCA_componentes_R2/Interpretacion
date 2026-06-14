@@ -1,0 +1,10 @@
+Interpretación de la tabla PCA de componentes y R²
+
+EL primer componente principal, PC1, explicó el 12,48 % de la variabilidad total de los datos, mientras que PC2 explicó un 8,56 % adicional. 
+En conjunto, los dos primeros componentes acumularon un 21,04 % de la variabilidad de las 37 variables génicas.
+Al añadir PC3, la proporción acumulada aumentó hasta el 27,57 %, y con PC4 alcanzó el 33,70 %. Los seis primeros componentes explicaron conjuntamente el 43,95 % de la variabilidad total.
+
+Estos resultados indican que la información de expresión génica está distribuida entre varias dimensiones y no se concentra principalmente en uno o dos componentes. 
+Por tanto, los gráficos basados únicamente en PC1 y PC2 permiten visualizar los patrones principales, pero representan solo una parte de la información original.
+La extracción de seis componentes resulta adecuada porque permite resumir casi la mitad de la variabilidad del conjunto de 37 genes en un número mucho menor de variables. 
+Sin embargo, todavía permanece una proporción importante de variabilidad en las componentes posteriores, por lo que los resultados deben interpretarse considerando que la reducción dimensional no conserva toda la información del dataset.
