@@ -1,0 +1,1508 @@
+---
+title: "Resolución Actividad 3 máster Bioinformática UNIR (2026)"
+author: "Equipo R"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: flatly
+  pdf_document:
+    toc: true
+---
+
+
+**Métodos preliminares**
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+**Habilitación CRAN**
+
+```{r CRAN, echo=TRUE, results='markup'}
+options(repos = c(CRAN = "https://cloud.r-project.org"))
+```
+
+
+# IDENTIFICACIÓN DE EJES DE VARIABILIDAD GÉNICA Y SU ASOCIACIÓN CON EL ESTADO PONDERAL EN INDIVIDUOS SIMPSON
+
+
+## INTRODUCCIÓN
+
+  En el presente ejercicio abordaremos un análisis bioestadístico aplicado a la expresión de 37 genes en una cohorte de 59 individuos, integrando variables sociodemográficas, clínicas y de estilo de vida procedentes de un dataset estructurado. [mubio02_act3 | Word]
+  El objetivo es explorar la estructura de los datos, evaluar la distribución de las variables génicas y estudiar posibles patrones subyacentes mediante técnicas de reducción de la dimensionalidad, así como su relación con variables de interés clínico. [mubio02_act3 | Word]
+En concreto, se llevará a cabo:
+
+- **La evaluación de la normalidad** de las variables de expresión génica
+- **La reducción de dimensionalidad mediante análisis de componentes principales (PCA)**
+- **La visualización y agrupación de variables e individuos (clustering)**
+- **La generación de representaciones gráficas**, incluyendo **heatmaps** de correlación y otras visualizaciones exploratorias
+- **El análisis descriptivo**, mediante **tablas de los datos crudos y de las variables transformadas**
+- La construcción de un **modelo predictivo mediante regresión logística**
+
+  A lo largo de cada apartado, se detallarán los procedimientos empleados y se interpretarán los resultados obtenidos, valorando su significado estadístico y su posible relevancia en el contexto biológico y clínico del problema estudiado.
+
+
+
+##  ESTABLECIMIENTO DEL ESPACIO DE TRABAJO
+
+  Declaramos el entorno de trabajo en la carpeta concreta del equipo del creador e instalamos los paquetes y librerías que van a ser necesarios para las operaciones.
+
+```{r Establecimiento entorno}
+setwd("C:/Users/alber/Desktop/UNIR 26 -27/Primer cuatrimestre/Estadística y R para las Ciencias de la Salud/Actividades/Actividad grupal/Trabajos")
+
+## Compruebo que la ruta sea correcta.
+
+getwd()
+
+## Reviso los archivos disponibles en la carpeta.
+
+list.files()
+
+```
+
+## LIMPIEZA DEL ENTORNO, REPRODUCIBILIDAD Y PAQUETES
+
+```{r Preparación del entorno}
+## Limpio el entorno para evitar que objetos creados anteriormente
+## interfieran con los resultados de esta actividad.
+
+rm(list = ls())
+
+## Fijo una semilla para que los procedimientos aleatorios,
+## como el clustering, puedan reproducirse.
+
+set.seed(2026)
+
+## Evito que R utilice notación científica cuando no sea necesaria.
+
+options(scipen = 999)
+
+## Defino los paquetes que utilizaré durante el análisis.
+
+paquetes <- c(
+  "dplyr",
+  "tidyr",
+  "ggplot2",
+  "janitor",
+  "factoextra",
+  "FactoMineR",
+  "pheatmap",
+  "gtsummary",
+  "flextable",
+  "officer",
+  "broom",
+  "car",
+  "pROC", 
+  "readr",
+  "ggrepel"
+)
+
+## Compruebo qué paquetes todavía no están instalados.
+
+paquetes_nuevos <- paquetes[
+  !paquetes %in% rownames(installed.packages())
+]
+
+## Instalo solamente los paquetes que falten.
+
+if (length(paquetes_nuevos) > 0) {
+  install.packages(paquetes_nuevos, dependencies = TRUE)
+}
+
+## Cargo las librerías necesarias.
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(janitor)
+library(factoextra)
+library(FactoMineR)
+library(pheatmap)
+library(gtsummary)
+library(flextable)
+library(officer)
+library(broom)
+library(car)
+library(pROC)
+library(readr)
+library(ggrepel)
+```
+
+
+## CARGA Y EXPLORACIÓN INICIAL DE LA BASE DE DATOS
+
+  Tomamos los datos desde el dataset aportado, sito en el espacio de trabajo declarado
+
+```{r Carga de los datos}
+## Cargo la base de datos en formato CSV.
+
+simpson_df <- read_csv("Base_de_datos_Los_Simpson_completa.csv")
+
+
+
+# Exploración inicial para comprobar estructura
+summary(simpson_df)
+
+
+## Reviso las dimensiones de la base de datos.
+
+dim(simpson_df)
+
+## Reviso la estructura general de las variables.
+
+str(simpson_df)
+
+## Reviso los nombres de todas las variables.
+
+names(simpson_df)
+
+## Reviso las primeras filas del dataset.
+
+head(simpson_df)
+
+## Obtengo un resumen general de las variables.
+
+summary(simpson_df)
+
+```
+
+## Resultados de la exploracion inicial. 
+
+La base de datos contiene 59 pacientes y 97 variables, entre ellas 37 genes desde ADCY3 hasta UHMK1.
+Los genes están en formato numérico y no presentan valores perdidos, por lo que pueden usarse directamente en el PCA.
+Solo se detectaron 5 NA en ingreso_anual_usd, que no afectan al análisis génico. 
+Como los genes tienen escalas diferentes, es correcto centrar y escalar antes del PCA.
+
+
+## CONTROL DE CALIDAD INICIAL
+```{r}
+## Compruebo el número total de valores perdidos en la base de datos.
+
+sum(is.na(simpson_df))
+
+is_na <- (is.na(simpson_df))
+
+is_na
+
+## Calculo los valores perdidos por variable.
+
+na_por_variable <- data.frame(
+  Variable = names(simpson_df),
+  NA_total = colSums(is.na(simpson_df)),
+  Porcentaje_NA = round(colMeans(is.na(simpson_df)) * 100, 2)
+)
+
+na_por_variable
+
+
+## Muestro únicamente las variables que presentan valores perdidos.
+
+na_por_variable_con_na <- na_por_variable %>%
+  filter(NA_total > 0)
+
+na_por_variable_con_na
+
+## Compruebo si existen registros duplicados.
+
+sum(duplicated(simpson_df))
+```
+## Resultados control de calidad
+
+En el control de calidad se detectaron 5 valores perdidos, todos en ingreso_anual_usd, lo que representa el 8,47 % de esa variable.
+No se encontraron filas duplicadas. Como los valores ausentes no están en las variables génicas, no afectan directamente al PCA.
+
+
+## INSPECCIÓN DE DATOS CRUDOS
+
+  En el sigguiente apartado, Se lleva a cabo un proceso de depuración que incluye la eliminación de variables irrelevantes, la corrección de inconsistencias en variables categóricas y la conversión adecuada de las variables a su tipo correspondiente. Asimismo, se identifican de forma automática las variables génicas y se clasifican las variables continuas según su normalidad mediante el test de Shapiro-Wilk.
+  Como resultado, se obtiene un conjunto de datos limpio y estructurado, a partir del cual se genera una tabla descriptiva resumen, aplicando los estadísticos más adecuados en función de la distribución de cada variable.
+
+```{r Tabla datos crudos}
+
+
+# ===============================
+# 1. ELIMINAR VARIABLES INNECESARIAS
+# ===============================
+
+datos <- simpson_df %>%
+  select(-...1, -nombre, -orden)
+
+
+# ===============================
+# 2. IDENTIFICACIÓN AUTOMÁTICA DE GENES
+# ===============================
+
+# Detecta variables con nombres en mayúsculas (genes)
+
+genes <- names(datos) %>%
+  grep("^[A-Z0-9]+$", ., value = TRUE)
+
+
+# ===============================
+# 3. VARIABLES CONTINUAS EXTRA
+# ===============================
+
+# Variables que deben tratarse como numéricas aunque parezcan categóricas
+
+vars_continuas_extra <- c(
+  "legumbres_g_d", "aceites_g_d", "hdl_mg_dl",
+  "albumina_g_dl", "bilirrubina_mg_dl",
+  "frutos_secos_g_d", "lacteos_g_d",
+  "af_moderada_h_semana", "af_intensa_h_semana"
+)
+
+
+# ===============================
+# 4. LIMPIEZA GLOBAL DEL DATASET
+# ===============================
+
+datos <- datos %>%
+  
+  # Limpieza general de texto
+  mutate(across(where(is.character), ~trimws(.))) %>%      # elimina espacios
+  mutate(across(where(is.character), ~na_if(., ""))) %>%   # elimina NA
+  
+  
+  # Corrección de variables clave
+  mutate(
+    sexo = dplyr::recode(sexo,
+                  "M" = "Masculino",
+                  "F" = "Femenino",
+                  "male" = "Masculino",
+                  "female" = "Femenino"
+    ),
+    
+    estado_civil = dplyr::recode(estado_civil,
+                          "casado" = "Casado",
+                          "soltero" = "Soltero"
+    ),
+    
+    etnicidad = dplyr::recode(etnicidad,
+                       "Caucásica" = "Caucásico"
+    )
+  ) %>%
+  
+  
+  # Unificación automática de categorías
+  mutate(
+    
+    situacion_vivienda = case_when(
+      grepl("prop", situacion_vivienda, ignore.case = TRUE) ~ "Propia",
+      grepl("alq|apart", situacion_vivienda, ignore.case = TRUE) ~ "Alquiler",
+      grepl("famil", situacion_vivienda, ignore.case = TRUE) ~ "Familiar",
+      TRUE ~ situacion_vivienda
+    ),
+    
+    enfermedades = dplyr::recode(enfermedades,
+                          "Enfermedades cardiovasculares" = "Enfermedad cardiovascular",
+                          "Diabetes tipo 2" = "Diabetes"
+    ),
+    
+    trastornos = dplyr::recode(trastornos,
+                        "No" = "Ninguno"
+    )
+  ) %>%
+  
+  
+  # Conversión a numérico de genes y variables continuas especiales
+  mutate(across(all_of(c(genes, vars_continuas_extra)), as.numeric)) %>%
+  
+  
+  # Conversión correcta a factor de variables categóricas
+  mutate(across(c(
+    sexo, estado_civil, nivel_educativo, ocupacion,
+    lugar_residencia, etnicidad, situacion_vivienda,
+    composicion_familiar, enfermedades, medicamento,
+    tabaco, alcohol, ansiedad, depresion, trastornos
+  ), ~factor(.))) %>%
+  
+  
+  # Eliminación de niveles vacíos en factores
+  mutate(across(where(is.factor), droplevels)) %>%
+  
+  
+  # Eliminación de filas problemáticas mínimas
+  filter(!is.na(sexo))
+
+
+# ===============================
+# 5. IDENTIFICAR VARIABLES NUMÉRICAS CLÍNICAS
+# ===============================
+
+numeric_vars <- datos %>%
+  select(where(is.numeric))
+
+numeric_vars_no_genes <- numeric_vars %>%
+  select(-all_of(genes))
+
+
+# ===============================
+# 6. TEST DE NORMALIDAD (Shapiro-Wilk)
+# ===============================
+
+check_normality <- function(x) {
+  
+  x <- na.omit(x)
+  
+  if (is.numeric(x) && length(x) >= 10 && length(unique(x)) > 5) {
+    p <- shapiro.test(x)$p.value
+    return(p > 0.05)
+  } else {
+    return(FALSE)
+  }
+}
+
+
+# Clasificación de variables
+
+normal_vars <- names(numeric_vars_no_genes)[
+  sapply(numeric_vars_no_genes, check_normality)
+]
+
+non_normal_vars <- setdiff(names(numeric_vars_no_genes), normal_vars)
+
+
+# ===============================
+# 7. TABLA DESCRIPTIVA FINAL
+# ===============================
+
+tabla <- datos %>%
+  tbl_summary(
+    
+    # Forzar tipo continuo en genes y variables mal interpretadas
+    type = list(
+      all_of(c(genes, vars_continuas_extra)) ~ "continuous"
+    ),
+    
+    
+    # Estadísticos personalizados
+    statistic = list(
+      all_of(genes) ~ "{median} ({p25}, {p75})",
+      all_of(normal_vars) ~ "{mean} ({sd})",
+      all_of(non_normal_vars) ~ "{median} ({p25}, {p75})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    
+    digits = all_continuous() ~ 2
+  ) %>%
+  
+  # Añadir número de observaciones
+  add_n() %>%
+  
+  # Resaltar etiquetas
+  bold_labels()
+
+
+# ===============================
+# 8. MOSTRAR RESULTADO
+# ===============================
+
+tabla
+
+```
+
+## ANÁLISIS DE COMPONENTES PRINCIPALES
+
+
+## Selección de variables de expresión génica
+```{r}
+## Compruebo la posición de los genes ADCY3 y UHMK1 dentro del dataset.
+
+which(names(simpson_df) == "ADCY3")
+which(names(simpson_df) == "UHMK1")
+
+## Selecciono todas las variables génicas comprendidas entre ADCY3 y UHMK1.
+
+genes_simpson <- names(simpson_df)[
+  which(names(simpson_df) == "ADCY3"):
+    which(names(simpson_df) == "UHMK1")
+]
+
+## Compruebo cuántos genes se han seleccionado.
+
+length(genes_simpson)
+
+## Muestro los nombres de los genes seleccionados.
+
+genes_simpson
+
+## Compruebo los valores perdidos en las variables de expresión génica.
+
+colSums(is.na(simpson_df[, genes_simpson]))
+
+## Calculo el total de valores perdidos en el conjunto de genes.
+
+sum(is.na(simpson_df[, genes_simpson]))
+
+
+```
+## Comprobación del formato de los genes
+```{r}
+## Compruebo el tipo de dato de las variables génicas seleccionadas.
+
+sapply(simpson_df[, genes_simpson], class)
+
+## Compruebo si todas las variables génicas son numéricas.
+
+sapply(simpson_df[, genes_simpson], is.numeric)
+
+## Convierto las variables génicas a formato numérico por seguridad.
+
+for (gen in genes_simpson) {
+  simpson_df[[gen]] <- as.numeric(simpson_df[[gen]])
+}
+
+## Vuelvo a comprobar que todas las variables sean numéricas.
+
+sapply(simpson_df[, genes_simpson], is.numeric)
+
+```
+## Formato de los genes
+
+Se seleccionaron correctamente 37 genes, ubicados entre las columnas 61 y 97, desde ADCY3 hasta UHMK1.
+Ninguna de estas variables génicas presentó valores perdidos, por lo que se conservaron los 59 pacientes para los análisis posteriores.
+
+
+## Test de normalidad de los genes
+
+```{r}
+## Aplico el test de Shapiro-Wilk a cada variable génica.
+## Guardo el estadístico W, el valor p y la interpretación.
+
+normalidad_genes <- data.frame(
+  Variable = genes_simpson,
+  Estadistico_W = NA,
+  Valor_p = NA,
+  Interpretacion = NA
+)
+
+for (i in seq_along(genes_simpson)) {
+  
+  prueba <- shapiro.test(simpson_df[[genes_simpson[i]]])
+  
+  normalidad_genes$Estadistico_W[i] <- prueba$statistic
+  
+  normalidad_genes$Valor_p[i] <- prueba$p.value
+  
+  normalidad_genes$Interpretacion[i] <- ifelse(
+    prueba$p.value < 0.05,
+    "Distribución no normal",
+    "Distribución compatible con normalidad"
+  )
+}
+
+## Creo una versión formateada para visualizar los resultados.
+
+normalidad_genes_resultado <- normalidad_genes %>%
+  mutate(
+    Estadistico_W = round(Estadistico_W, 3),
+    Valor_p = format(
+      Valor_p,
+      scientific = TRUE,
+      digits = 3
+    )
+  )
+
+normalidad_genes_resultado
+
+## Resumo cuántos genes presentan distribución normal y cuántos no.
+
+table(normalidad_genes$Interpretacion)
+```
+## Normalidad de los genes
+
+Los 37 genes presentaron valores p menores de 0,05 en el test de Shapiro-Wilk, por lo que ninguno siguió una distribución normal.
+Por este motivo, en los análisis descriptivos posteriores deberán utilizarse la mediana y el rango intercuartílico, junto con pruebas no paramétricas.
+
+
+## Preparación de los datos para el PCA 
+```{r}
+## Creo un dataframe únicamente con las variables de expresión génica.
+
+datos_genes <- simpson_df[, genes_simpson]
+
+## Compruebo las dimensiones y la estructura del conjunto de genes.
+
+dim(datos_genes)
+str(datos_genes)
+
+## Confirmo que no existan valores perdidos antes de realizar el PCA.
+
+sum(is.na(datos_genes))
+
+```
+## Datos del PCA
+
+El conjunto usado para el PCA quedó formado por 59 pacientes y 37 genes. 
+Todas las variables génicas son numéricas y no presentan valores perdidos, por lo que el análisis puede realizarse con todos los pacientes y sin aplicar eliminación ni imputación de datos.
+
+
+## Análisis de componentes principales 
+```{r}
+## Realizo el PCA con las variables génicas.
+## Centro y escalo las variables para que todas tengan el mismo peso
+## independientemente de su media y variabilidad original.
+
+pca_genes <- prcomp(
+  datos_genes,
+  center = TRUE,
+  scale. = TRUE
+)
+
+## Reviso un resumen general del PCA.
+
+summary(pca_genes)
+
+## Reviso los elementos guardados dentro del objeto PCA.
+
+names(pca_genes)
+```
+## Resultados componentes principales
+
+El PCA generó 37 componentes principales, una por cada gen analizado. La PC1 explicó el 12,48 % de la variabilidad y la PC2 el 8,56 %.
+Juntas acumularon el 21,04 %. Las seis primeras componentes explicaron en conjunto el 43,95 % de la variabilidad total. 
+Esto indica que la información está repartida entre varias componentes y no se concentra solo en las dos primeras.
+
+
+## VArianza explicada y tabla PCA componentes y R2 
+```{r}
+## Extraigo los autovalores, el porcentaje de varianza explicada
+## y la varianza acumulada de cada componente principal.
+
+varianza_pca <- get_eigenvalue(pca_genes)
+
+varianza_pca
+
+## Creo una tabla completa con la información del PCA.
+
+tabla_varianza_pca <- data.frame(
+  Componente = rownames(varianza_pca),
+  Autovalor = varianza_pca$eigenvalue,
+  R2 = varianza_pca$variance.percent,
+  R2_acumulado = varianza_pca$cumulative.variance.percent
+)
+
+## Redondeo los resultados para facilitar su lectura.
+
+tabla_varianza_pca <- tabla_varianza_pca %>%
+  mutate(
+    Autovalor = round(Autovalor, 3),
+    R2 = round(R2, 2),
+    R2_acumulado = round(R2_acumulado, 2)
+  )
+
+tabla_varianza_pca
+
+## Creo la tabla solicitada con las primeras seis componentes.
+
+tabla_pca_componentes_6 <- tabla_varianza_pca %>%
+  slice(1:6) %>%
+  select(
+    Componente,
+    R2
+  )
+
+tabla_pca_componentes_6
+
+## Convierto la tabla a flextable para mejorar su presentación.
+
+tabla_componentes_flex <- flextable(tabla_pca_componentes_6) %>%
+  autofit() %>%
+  fontsize(size = 10, part = "all")
+
+tabla_componentes_flex
+
+## Guardo la tabla como imagen PNG.
+
+save_as_image(
+  tabla_componentes_flex,
+  path = "tabla_pca_componentes_R2.png"
+)
+
+## También la guardo como CSV para poder compartir los datos en Git.
+
+write.csv(
+  tabla_pca_componentes_6,
+  "tabla_pca_componentes_R2.csv",
+  row.names = FALSE
+)
+
+
+## Interpretación de la tabla PCA de componentes y R²
+```
+
+EL primer componente principal, PC1, explicó el 12,48 % de la variabilidad total de los datos, mientras que PC2 explicó un 8,56 % adicional. 
+
+En conjunto, los dos primeros componentes acumularon un 21,04 % de la variabilidad de las 37 variables génicas.
+
+Al añadir PC3, la proporción acumulada aumentó hasta el 27,57 %, y con PC4 alcanzó el 33,70 %. Los seis primeros componentes explicaron conjuntamente el 43,95 % de la variabilidad total.
+
+
+Estos resultados indican que la información de expresión génica está distribuida entre varias dimensiones y no se concentra principalmente en uno o dos componentes. 
+
+Por tanto, los gráficos basados únicamente en PC1 y PC2 permiten visualizar los patrones principales, pero representan solo una parte de la información original.
+
+La extracción de seis componentes resulta adecuada porque permite resumir casi la mitad de la variabilidad del conjunto de 37 genes en un número mucho menor de variables. 
+
+Sin embargo, todavía permanece una proporción importante de variabilidad en las componentes posteriores, por lo que los resultados deben interpretarse considerando que la reducción dimensional no conserva toda la información del dataset.
+
+
+
+## Extracción de scores de las primeras seis componentes 
+```{r}
+## Extraigo los scores de las primeras seis componentes principales.
+
+scores_pca <- as.data.frame(
+  pca_genes$x[, 1:6]
+)
+
+## Reviso las primeras filas de los scores.
+
+head(scores_pca)
+
+## Añado los scores al dataframe original.
+
+simpson_df <- cbind(
+  simpson_df,
+  scores_pca
+)
+
+## Compruebo que PC1 a PC6 se hayan añadido correctamente.
+
+names(simpson_df)
+```
+## Resultados de la extraccion 
+
+Se extrajeron los scores de las primeras seis componentes principales y se añadieron correctamente a simpson_df. 
+Estos scores representan la posición de cada paciente en cada componente y se usarán después para crear terciles, realizar clustering de individuos y ajustar los modelos de regresión logística.
+
+
+## Gráfico de varianza explicada 
+```{r}
+## Represento el porcentaje de varianza explicado por cada componente principal.
+## Este gráfico me ayuda a identificar qué componentes concentran más información.
+
+grafico_varianza <- fviz_eig(
+  pca_genes,
+  addlabels = TRUE,
+  ylim = c(0, 100)
+) +
+  ggtitle("Varianza explicada por los componentes principales") +
+  theme_minimal()
+
+grafico_varianza
+```
+## Resultado de la varianza
+
+El gráfico muestra que PC1 explica el 12,5 % de la variabilidad y PC2 el 8,6 %. A partir de la tercera componente, el porcentaje explicado disminuye de forma gradual y no se observa un “codo” muy marcado. 
+Esto indica que la información de los genes está repartida entre varias componentes y no se concentra únicamente en las dos primeras. 
+Las seis primeras componentes explican aproximadamente el 43,9 % de la variabilidad total.
+
+
+## Coordenadas, Cos2, contribuciones y tabla PCA cargas
+
+```{r}
+## Extraigo las coordenadas, la calidad de representación
+## y las contribuciones de las variables génicas en el PCA.
+
+variables_pca <- get_pca_var(pca_genes)
+
+## Reviso las coordenadas de los genes.
+
+head(variables_pca$coord)
+
+## Reviso la calidad de representación de los genes.
+
+head(variables_pca$cos2)
+
+## Reviso las contribuciones de los genes.
+
+head(variables_pca$contrib)
+
+## Convierto las coordenadas de las variables en una tabla.
+## Estas coordenadas representan las cargas de cada gen.
+
+tabla_pca_cargas <- as.data.frame(variables_pca$coord) %>%
+  tibble::rownames_to_column("Variable") %>%
+  select(
+    Variable,
+    Dim.1,
+    Dim.2,
+    Dim.3,
+    Dim.4,
+    Dim.5,
+    Dim.6
+  ) %>%
+  rename(
+    PC1 = Dim.1,
+    PC2 = Dim.2,
+    PC3 = Dim.3,
+    PC4 = Dim.4,
+    PC5 = Dim.5,
+    PC6 = Dim.6
+  ) %>%
+  mutate(
+    across(
+      PC1:PC6,
+      ~ round(.x, 3)
+    )
+  )
+
+tabla_pca_cargas
+
+## Convierto la tabla a flextable para mejorar su presentación.
+
+tabla_cargas_flex <- flextable(tabla_pca_cargas) %>%
+  autofit() %>%
+  fontsize(size = 8, part = "all")
+
+tabla_cargas_flex
+
+## Guardo la tabla como imagen PNG.
+
+save_as_image(
+  tabla_cargas_flex,
+  path = "tabla_pca_cargas.png"
+)
+
+## También la guardo como CSV para compartirla y reutilizarla.
+
+write.csv(
+  tabla_pca_cargas,
+  "tabla_pca_cargas.csv",
+  row.names = FALSE
+)
+
+```
+## Interpretación de la tabla PCA de cargas
+
+Las cargas indican la relación de cada gen con los componentes principales. 
+Cuanto mayor es el valor absoluto de la carga, mayor es la importancia del gen para definir ese componente. 
+El signo indica la dirección de la asociación, pero no su intensidad.
+
+En PC1 destacaron principalmente POMC con una carga de 0,801, ANO4 con 0,783, LEPR con 0,721, ADCY3 con 0,712, PCSK1 con 0,627 y SH2B1 con 0,579. 
+Todos presentan cargas positivas, por lo que tienden a aumentar conjuntamente a medida que aumenta el score de PC1.
+Este componente parece representar un patrón común de expresión definido principalmente por estos genes.
+
+En PC2, los genes con mayor peso fueron NTRK2 (0,597) y CADM2 (0,581) en sentido positivo, mientras que NRP1 (-0,495), PHIP (-0,445) y FTO (-0,443) presentaron cargas negativas. 
+Esto indica que PC2 contrapone dos grupos de genes con comportamientos opuestos.
+
+En PC3 destacó MRAP2 con una carga negativa de -0,656, mientras que CREBRF (0,511) y FTO (0,470) presentaron cargas positivas. 
+En PC4, el gen más representativo fue ROBO1 (-0,630), seguido de ANKRD27, MC4R, DPP9 y PPARG.
+Para PC5 destacaron DPP9, GIPR y BDNF, mientras que PC6 estuvo principalmente definida por GIPR, GPR75, CADM1 y NRP2.
+
+En conjunto, las cargas muestran que cada componente resume patrones diferentes de expresión y que no todos los genes contribuyen de la misma manera a la estructura multivariante del dataset.
+
+
+## Visualización de variables según Cos2
+
+```{r}
+## Represento las variables génicas en el espacio de PC1 y PC2.
+## El color indica la calidad de representación de cada variable.
+
+grafico_variables_cos2 <- fviz_pca_var(
+  pca_genes,
+  axes = c(1, 2),
+  col.var = "cos2",
+  gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+  repel = TRUE
+) +
+  ggtitle("Variables génicas según su calidad de representación") +
+  theme_minimal()
+
+grafico_variables_cos2
+```
+## Interpretacion  de graficos segun Cos2
+
+El gráfico muestra cómo se representan los genes en el plano formado por PC1 y PC2. Los genes con colores más cálidos y flechas más largas tienen una mejor calidad de representación. 
+En PC1 destacan especialmente POMC, ADCY3, LEPR, ANO4 y PCSK1, mientras que en PC2 sobresalen NTRK2 y CADM2. Los genes cercanos al centro tienen una representación más débil en estas dos componentes.
+En conjunto, el gráfico confirma que distintos grupos de genes contribuyen de manera diferente a PC1 y PC2.
+
+
+##  Contribución de los genes a los componentes
+```{r}
+## Muestro los genes que más contribuyen a la primera componente.
+
+contribucion_pc1 <- fviz_contrib(
+  pca_genes,
+  choice = "var",
+  axes = 1,
+  top = 15
+) +
+  ggtitle("Contribución de los genes a PC1") +
+  theme_minimal()
+
+contribucion_pc1
+
+## Muestro los genes que más contribuyen a la segunda componente.
+
+contribucion_pc2 <- fviz_contrib(
+  pca_genes,
+  choice = "var",
+  axes = 2,
+  top = 15
+) +
+  ggtitle("Contribución de los genes a PC2") +
+  theme_minimal()
+
+contribucion_pc2
+```
+## Resultados de los componentes
+
+En PC1, los genes que más contribuyen son POMC, ANO4, LEPR, ADCY3, PCSK1 y SH2B1. 
+Todos superan claramente la contribución media marcada por la línea roja, por lo que son los genes más importantes para definir esta componente.
+En PC2, destacan principalmente NTRK2, CADM2, NRP1, KSR2, PHIP, FTO y KIAA0586. 
+También se sitúan por encima de la contribución media, indicando que tienen un peso relevante en la construcción de PC2.
+En conjunto, PC1 y PC2 están definidas por grupos distintos de genes, lo que sugiere que cada componente resume patrones diferentes de expresión génica.
+
+
+## HEATMAP CORRELACIONES DE SPERAMAN 
+
+```{r}
+
+#Se construye un heatmap con las correlaciones de Spearman entre las variables génicas y los primeras seis componentes principales, con el objetivo de observar posibles asociaciones entre genes o grupos de genes y los componentes principales. 
+
+
+# Matriz combinada genes + PCs
+mat <- cbind(datos_genes, pca_genes$x[, 1:6])
+cor_mat <- cor(mat, method = "spearman", use = "pairwise.complete.obs")
+
+# Visualizar Heatmap
+
+pheatmap(
+  cor_mat,
+  clustering_method = "ward.D2",
+  main = "Heatmap correlaciones Spearman (genes + PCs)"
+)
+
+```
+
+## Interpretación del Heatmap de correlaciones de Spearman
+
+El análisis de correlaciones de Spearman entre genes y componentes principales muestra patrones diferenciados de asociación entre la expresión génica y los ejes de variabilidad capturados por el PCA.
+
+
+###  Genes fuertemente asociados a PC2
+
+Los genes CADM2 y NTRK2 presentan correlaciones positivas moderadas-altas con PC2 (ρ entre 0.5 y 1).
+
+Esto indica que PC2 está fuertemente influido por la variación conjunta de estos genes. Ambos podrían formar parte de un mismo eje funcional o biológico y sugiere un posible módulo de coexpresión relacionado con ese componente.
+
+
+###  Genes asociados a PC3
+
+Los genes CREBRF y UBR2 muestran correlaciones positivas elevadas con PC3 (ρ entre 0.5 y 1).
+
+Esto indica que PC3 recoge un patrón de expresión asociado a estos genes. Podría representar una vía biológica diferente a la capturada por PC2 y refuerza la idea de que los componentes del PCA no son aleatorios, sino estructurados biológicamente.
+
+
+###  Gen asociado a PC6
+
+El gen GIPR presenta una correlación positiva fuerte con PC6 (ρ entre 0.5 y 1).
+
+Esto indica que PC6 parece estar dominado por variación específica de un único gen o muy pocos genes. Sugiere un componente más “específico” o de menor varianza global.
+
+###  Asociación negativa con PC4
+
+El gen ROBO1 muestra una correlación negativa fuerte con PC4 (ρ entre −0.5 y −1).
+
+Esto indica que este gen se comporta en dirección opuesta al resto de variables que definen PC4 y que podría representar un eje de contraste biológico donde ROBO1 actúa como marcador inverso.
+
+###  Resto de genes
+
+El resto de genes muestran correlaciones débiles o moderadas (ρ entre −0.5 y 0.5) con todos los componentes.
+
+Esto indica que no contribuyen de forma dominante a ningún eje principal y refuerza el hecho de que solo un subconjunto de genes explica la estructura principal del dataset.
+
+### Conclusión global
+
+En conjunto, el heatmap de Spearman revela que la estructura del PCA está impulsada por subconjuntos específicos de genes. PC2 y PC3 están asociados a grupos de genes concretos (CADM2–NTRK2 y CREBRF–UBR2, respectivamente), mientras que PC6 parece capturar una señal más específica dominada por GIPR. Por otro lado, PC4 muestra una relación inversa con ROBO1, sugiriendo un eje de variación con comportamiento opuesto para este gen. El resto de genes presentan correlaciones débiles, indicando que no contribuyen de forma predominante a los principales ejes de variabilidad.
+
+
+
+## ANÁLISIS DE EXPRESIÓN GÉNICA POR TERCILES DEL PCA 
+
+ En este bloque se compara la expresión génica según los patrones de variabilidad identificados en el PCA, clasificando a los individuos en terciles (bajo, medio, alto) para PC1, PC2 y PC3.
+  Se integran estos grupos con los datos originales y se generan tablas descriptivas por componente, utilizando mediana y rango intercuartílico. Las diferencias entre grupos se evalúan mediante el test de Kruskal-Wallis.
+  Como resultado, se obtiene una tabla combinada que permite identificar genes asociados a los principales ejes de variación del conjunto de datos, lo que permite identificar genes cuya expresión se asocia a los patrones de variabilidad capturados por el PCA.
+  
+  El análisis por terciles de los componentes principales identificó múltiples genes con diferencias significativas de expresión a lo largo de los ejes de variabilidad.
+  El componente PC2 concentró el mayor número de asociaciones estadísticas significativas, incluyendo genes clave en la regulación metabólica y energética como FTO, LEP, KSR2 y NTRK2, lo que sugiere que este componente refleja un eje biológico relacionado con la homeostasis energética y el riesgo de obesidad.
+  El PC1 mostró asociaciones adicionales con genes implicados en el control neuroendocrino del apetito, como POMC y MC4R, indicando un papel relevante aunque más heterogéneo.
+  Por su parte, el PC3 capturó un conjunto más reducido de genes, destacando FTO, CREBRF y SH2B1, lo que sugiere la presencia de un eje metabólico secundario.
+  En conjunto, los resultados evidencian que los principales componentes del PCA reflejan gradientes biológicos relacionados con el metabolismo energético y la regulación del apetito.
+  
+  
+```{r Tabla comparación terciles PCAs}
+
+# CREACIÓN DE TERCILES DEL PCA
+
+## Clasificamos cada individuo en “bajo / medio / alto” según su posición en PC1, PC2 y PC3
+
+## Extraemos los scores del PCA (coordenadas de cada individuo en los componentes)
+
+scores_pca <- as.data.frame(pca_genes$x)
+
+## Creamos terciles (T1, T2, T3) para cada componente principal
+## Dividimos los datos en 3 grupos según percentiles 33% y 66%
+
+scores_pca <- scores_pca %>%
+  mutate(
+    
+    PC1_t = cut(
+      PC1,
+      breaks = quantile(PC1, probs = c(0, 1/3, 2/3, 1)),
+      include.lowest = TRUE,
+      labels = c("T1", "T2", "T3")
+    ),
+    
+    PC2_t = cut(
+      PC2,
+      breaks = quantile(PC2, probs = c(0, 1/3, 2/3, 1)),
+      include.lowest = TRUE,
+      labels = c("T1", "T2", "T3")
+    ),
+    
+    PC3_t = cut(
+      PC3,
+      breaks = quantile(PC3, probs = c(0, 1/3, 2/3, 1)),
+      include.lowest = TRUE,
+      labels = c("T1", "T2", "T3")
+    )
+  )
+
+
+# UNIÓN DE DATOS ORIGINALES Y TERCILES DEL PCA
+# Usamos expresión génica original (sin transformar) y agrupamos por terciles del PCA
+# Nos quedamos solo con los genes + los grupos de PCA
+
+df_final <- cbind(
+  simpson_df[, genes_simpson],   # datos originales de genes
+  scores_pca[, c("PC1_t", "PC2_t", "PC3_t")]  # terciles
+)
+
+# Conversión explícita de genes a numéricos
+
+df_final <- df_final %>%
+  mutate(across(all_of(genes_simpson), ~ as.numeric(as.character(.))))
+
+str(df_final)
+
+#  TABLA DESCRIPTIVA - PC1
+tabla_PC1 <- df_final %>%
+  
+  # Eliminamos otros grupos para que no interfieran
+  
+  select(-PC2_t, -PC3_t) %>%
+  
+  # Creamos la tabla
+  
+  tbl_summary(
+    by = PC1_t,   # Agrupamos por terciles
+    
+    type = all_of(genes_simpson) ~ "continuous",
+    
+    # Usamos mediana y rango intercuartílico
+    # (porque la mayoría de genes no siguen distribución normal)
+    
+    statistic = all_continuous() ~ "{median} ({p25} - {p75})",
+    
+    # Número de decimales
+    
+    digits = all_continuous() ~ 1
+  ) %>%
+  
+  # Añadimos comparación estadística (Kruskal-Wallis)
+  
+  add_p(test = all_continuous() ~ "kruskal.test")
+
+
+# TABLA DESCRIPTIVA - PC2
+
+tabla_PC2 <- df_final %>%
+  
+  select(-PC1_t, -PC3_t) %>%
+  
+  tbl_summary(
+    by = PC2_t,
+    type = all_of(genes_simpson) ~ "continuous",
+    statistic = all_continuous() ~ "{median} ({p25} - {p75})",
+    digits = all_continuous() ~ 1
+  ) %>%
+  
+  add_p(test = all_continuous() ~ "kruskal.test")
+
+
+# TABLA DESCRIPTIVA - PC3
+tabla_PC3 <- df_final %>%
+  
+  select(-PC1_t, -PC2_t) %>%
+  
+  tbl_summary(
+    by = PC3_t,
+    type = all_of(genes_simpson) ~ "continuous",
+    statistic = all_continuous() ~ "{median} ({p25} - {p75})",
+    digits = all_continuous() ~ 1
+  ) %>%
+  
+  add_p(test = all_continuous() ~ "kruskal.test")
+
+
+# COMBINAR TABLAS
+
+tabla_combinada <- tbl_merge(
+  tbls = list(tabla_PC1, tabla_PC2, tabla_PC3),
+  tab_spanner = c("**PC1**", "**PC2**", "**PC3**")
+)
+
+#  MOSTRAR TABLA COMBINADA
+
+tabla_combinada
+```
+
+
+## AGRUPACIÓN DE GENES POR PCA   
+
+  Se realiza un análisis de agrupación de las variables génicas en función de su comportamiento en el espacio definido por el PCA. Para ello, se aplica un clustering k-means sobre las coordenadas de los genes en los tres primeros componentes principales.
+  Los grupos obtenidos se representan gráficamente en el plano PC1–PC2, incorporando etiquetas de los genes y elipses de confianza  al 95% para facilitar la interpretación de la separación entre clusters.
+  Como resultado, se identifican conjuntos de genes con patrones de variación similares dentro de la estructura global de los datos. En concreto, el análisis identificó tres grupos principales con patrones diferenciables.
+  El primer cluster (rojo) agrupa genes asociados a valores positivos de PC1, incluyendo POMC, LEPR y SH2B1, implicados en la regulación del apetito y la señalización leptina-melanocortina, lo que sugiere un perfil funcional relacionado con la activación de vías neuroendocrinas del balance energético.
+  El segundo cluster (azul), situado en valores negativos de PC1, incluye genes como MC4R, FTO y SIM1, también implicados en el metabolismo energético pero con un patrón opuesto, indicando la presencia de un gradiente biológico en este componente.
+  El tercer cluster (verde) contiene genes con posiciones intermedias, lo que sugiere un papel modulador dentro de la estructura global de variabilidad.
+  En conjunto, estos resultados indican que los principales ejes del PCA reflejan programas biológicos diferenciados relacionados con la regulación del metabolismo y el apetito, con una clara separación entre estados funcionales opuestos.
+
+
+```{r Clúster PCA variables - genes}
+
+# COORDENADAS DE VARIABLES (GENES) EN EL PCA
+
+coord_genes <- as.data.frame(pca_genes$rotation[, 1:3])
+
+## Añadimos nombre del gen
+
+coord_genes$gene <- rownames(coord_genes)
+
+# CLUSTERING (3 CLUSTERS)
+
+set.seed(123)  # Para reproducibilidad
+
+kmeans_res <- kmeans(coord_genes[, 1:3], centers = 3)
+
+## Añadimos cluster a la tabla
+
+coord_genes$cluster <- as.factor(kmeans_res$cluster)
+
+#  VISUALIZACIÓN
+
+ggplot(coord_genes, aes(x = PC1, y = PC2, color = cluster)) +
+  
+  geom_point(size = 3) +
+  
+  geom_text_repel(aes(label = gene), size = 3) +
+  
+  stat_ellipse(type = "norm", level = 0.95, linewidth = 1) +  
+  
+  theme_minimal() +
+  
+  labs(
+    title = "Clustering de genes (PCA)",
+    x = "PC1",
+    y = "PC2",
+    color = "Cluster"
+  )
+```
+
+
+## AGRUPACIÓN DE INDIVIDUOS POR PCA 
+
+  A continuación, vamos a realizar un análisis de agrupación de los individuos en función de sus puntuaciones en los tres primeros componentes principales del PCA, utilizando el algoritmo k-means.
+  Los grupos obtenidos se representan en el plano PC1–PC2, incorporando elipses de confianza para visualizar la separación entre clusters.
+  Como resultado, se identifican perfiles de individuos con patrones de expresión génica similares dentro de la estructura global del dataset, consistentes en tres grupos con perfiles de expresión diferenciados, mostrando separación principalmente a lo largo del eje PC1,lo que indica que este componente constituye la principal fuente de variabilidad entre los individuos. El cluster 1 presenta valores más elevados de PC1 y una mayor dispersión, lo que sugiere una mayor heterogeneidad en su perfil de expresión.
+  Por otro lado, los clusters 2 y 3 se diferencian principalmente a lo largo del eje PC2, representando subgrupos dentro de la variabilidad global. El cluster 3 muestra valores más altos de PC2 y una distribución más compacta, indicando mayor homogeneidad.
+  En conjunto, estos resultados reflejan la existencia de diferentes perfiles biológicos entre los individuos, probablemente asociados a variaciones en la regulación del metabolismo energético y la señalización neuroendocrina, en concordancia con los resultados observados en los análisis de expresión génica por componentes principales.
+
+  
+```{r Clúster PCA individuos}
+# Ahora vamos a agrupar individuos, no genes 
+
+# SCORES DEL PCA (INDIVIDUOS)
+
+# Extraemos los scores de los individuos Simpson
+
+scores_ind <- as.data.frame(pca_genes$x[, 1:3])
+
+
+#  CLUSTERING DE INDIVIDUOS
+
+# Agrupamos por el método k-means, indicando tres centros (grupos)
+
+set.seed(123)
+
+kmeans_ind <- kmeans(scores_ind, centers = 3)
+
+## Añadimos cluster
+
+scores_ind$cluster <- as.factor(kmeans_ind$cluster)
+
+
+# VISUALIZACIÓN
+
+ggplot(scores_ind, aes(x = PC1, y = PC2, color = cluster)) +
+  
+  geom_point(size = 3) +
+  
+  stat_ellipse(level = 0.95, linewidth = 1) +   # Elipses
+  
+  theme_minimal() +
+  
+  labs(
+    title = "Clustering de individuos basado en PCA",
+    x = "PC1",
+    y = "PC2",
+    color = "Cluster"
+  )
+```
+
+
+## DISTRIBUCIÓN POR IMC EN EL PCA  
+
+  Se analiza la distribución de los individuos en el espacio del PCA en función de su categoría de índice de masa corporal (IMC), clasificada en normal, sobrepeso y obesidad.
+  Los individuos se representan en el plano PC1–PC2, incorporando coloreado por categoría y elipses de dispersión para evaluar posibles patrones de agrupación. La proximidad entre puntos indica similitud en los perfiles de expresión génica. Si las categorías de IMC aparecen agrupadas, podría sugerir una relación entre la expresión génica y estado nutricional.
+  El resultado permite explorar la posible relación entre los perfiles de expresión génica y el estado ponderal de los individuos. 
+  
+  El agrupamiento de puntos y la superposición de elipses sugiere la ausencia de una clara separación entre los perfiles de  expresión génica en función del estado de IMC
+  
+  No obstante, se observa una mayor dispersión en el grupo de obesidad, incluyendo algunos individuos con valores extremos en el eje PC1, lo que podría indicar la existencia de subgrupos biológicamente diferenciados dentro de esta categoría.
+
+  En conjunto, estos resultados sugieren que la variabilidad en los perfiles de expresión génica es más compleja que la clasificación basada en IMC, y podría estar influida por otros factores metabólicos o moleculares no capturados directamente por esta variable.
+
+
+```{r Gráfico IMC - PCAs}
+
+
+# CREACIÓN DE VARIABLE IMC CATEGÓRICA
+
+# Se crean categorías clínicas de IMC
+simpson_df$IMC_cat <- cut(
+  simpson_df$imc_kg_m2,
+  breaks = c(-Inf, 24.9, 29.9, Inf),
+  labels = c("Normal", "Sobrepeso", "Obesidad")
+)
+
+# Se comprueba la distribución de pacientes por categoría
+table(simpson_df$IMC_cat)
+
+
+# PREPARACIÓN PARA VISUALIZACIÓN
+
+# Se extraen las coordenadas de los individuos en el PCA
+pca_df <- as.data.frame(pca_genes$x)
+
+# Se añaden variables clínicas y de identificación
+pca_df$IMC_cat <- simpson_df$IMC_cat
+pca_df$nombre <- simpson_df$nombre
+
+
+# VISUALIZACIÓN DEL PCA SEGÚN IMC
+
+# Se representa el plano formado por PC1 y PC2
+# Los individuos se colorean según su categoría de IMC
+
+ggplot(pca_df, aes(x = PC1, y = PC2, color = IMC_cat)) +
+  geom_point(size = 3, alpha = 0.8) +
+  theme_minimal() +
+  labs(
+    title = "PCA de expresión génica en pacientes",
+    subtitle = "Distribución de individuos según categorías de IMC",
+    x = "Componente Principal 1",
+    y = "Componente Principal 2",
+    color = "Categoría IMC"
+  ) +
+  scale_color_manual(values = c(
+    "Normal" = "#4CAF50",
+    "Sobrepeso" = "#FFC107",
+    "Obesidad" = "#F44336"
+  ))
+
+#  VISUALIZACIÓN DEL PCA CON ELIPSES POR IMC
+
+# En este gráfico añadimos elipses para representar la dispersión de cada grupo
+# de IMC en el espacio definido por PC1 y PC2 (ayudan a visualizar
+# si los grupos están separados o solapados)
+
+ggplot(pca_df, aes(x = PC1, y = PC2, color = IMC_cat)) +
+  
+  # Puntos individuales (cada paciente)
+  geom_point(size = 3, alpha = 0.8) +
+  
+  # Elipses por grupo de IMC
+  stat_ellipse(aes(group = IMC_cat), linetype = 2, size = 1) +
+  
+  # Tema limpio
+  theme_minimal() +
+  
+  # Etiquetas
+  labs(
+    title = "PCA de expresión génica en pacientes",
+    subtitle = "Distribución por IMC con elipses de dispersión",
+    x = "Componente Principal 1",
+    y = "Componente Principal 2",
+    color = "Categoría IMC"
+  ) +
+  
+  # Colores personalizados
+  scale_color_manual(values = c(
+    "Normal" = "#4CAF50",
+    "Sobrepeso" = "#FFC107",
+    "Obesidad" = "#F44336"
+  ))
+
+
+```
+
+
+## MODELO DE REGRESIÓN LOGÍSTICA
+
+Se van a construir tres modelos de regresión logística binaria para evaluar la asociación entre los terciles de los componentes principales del PCA y la presencia de sobrepeso (IMC ≥ 25), incorporando progresivamente variables sociodemográficas y clínicas. La bondad global de ajuste de los modelos se evaluará mediante pruebas de razón de verosimilitudes comparando cada modelo con el modelo nulo.
+
+```{r Regresión Logística}
+# Variable binaria: sobrepeso (IMC ≥ 25)
+
+simpson_df$sobrepeso <- ifelse(simpson_df$imc_kg_m2 >= 25, 1, 0)
+
+# Unifico datasets
+
+df_modelo <- cbind(
+  simpson_df[, c("sobrepeso", "edad_anios", "sexo",
+                 "colesterol_total_mg_dl", "glucosa_mg_dl")],
+  df_final[, c("PC1_t", "PC2_t", "PC3_t")]
+)
+
+# Asegurar que son factores
+
+df_modelo$sexo <- as.factor(df_modelo$sexo)
+df_modelo$PC1_t <- as.factor(df_modelo$PC1_t)
+df_modelo$PC2_t <- as.factor(df_modelo$PC2_t)
+df_modelo$PC3_t <- as.factor(df_modelo$PC3_t)
+
+# Referencias (T1 como referencia)
+
+df_modelo$PC1_t <- relevel(df_modelo$PC1_t, ref = "T1")
+df_modelo$PC2_t <- relevel(df_modelo$PC2_t, ref = "T1")
+df_modelo$PC3_t <- relevel(df_modelo$PC3_t, ref = "T1")
+
+# Tomar en cuenta también la variable sexo Femenino como referencia
+
+df_modelo$sexo <- relevel(df_modelo$sexo, ref = "Femenino")
+
+# Generar el primer modelo para la regresión (solo PCA)
+
+modelo_1 <- glm(
+  sobrepeso ~ PC1_t + PC2_t + PC3_t,
+  family = binomial(link = "logit"),
+  data = df_modelo
+)
+
+summary(modelo_1)
+
+# Generar el segundo modelo: sociodemográfico
+
+modelo_2 <- glm(
+  sobrepeso ~ PC1_t + PC2_t + PC3_t +
+    edad_anios + sexo,
+  family = binomial(link = "logit"),
+  data = df_modelo
+)
+
+# Generar el tercer modelo: incluyendo metabolitos
+
+modelo_3 <- glm(
+  sobrepeso ~ PC1_t + PC2_t + PC3_t +
+    edad_anios + sexo +
+    colesterol_total_mg_dl + glucosa_mg_dl,
+  family = binomial(link = "logit"),
+  data = df_modelo
+)
+
+# Extraer OR, IC95 y p-value
+
+extraer_or <- function(modelo) {
+  
+  tidy(modelo, exponentiate = TRUE, conf.int = TRUE) %>%
+    mutate(
+      OR_IC = paste0(
+        round(estimate, 2),
+        " (",
+        round(conf.low, 2),
+        " - ",
+        round(conf.high, 2),
+        ")"
+      ),
+      p_value = signif(p.value, 3)
+    ) %>%
+    select(term, OR_IC, p_value)
+}
+
+# Crear tablas individuales de resultados de la regresión
+
+tabla_m1 <- extraer_or(modelo_1)
+tabla_m2 <- extraer_or(modelo_2)
+tabla_m3 <- extraer_or(modelo_3)
+
+# Creo tabla final
+
+tabla_final <- tabla_m1 %>%
+  rename(M1_OR = OR_IC, M1_p = p_value) %>%
+  full_join(
+    tabla_m2 %>% rename(M2_OR = OR_IC, M2_p = p_value),
+    by = "term"
+  ) %>%
+  full_join(
+    tabla_m3 %>% rename(M3_OR = OR_IC, M3_p = p_value),
+    by = "term"
+  )
+
+tabla_final <- tabla_final %>%
+  mutate(
+    term = case_when(
+      grepl("PC1_t", term) ~ "Terciles PC1",
+      grepl("PC2_t", term) ~ "Terciles PC2",
+      grepl("PC3_t", term) ~ "Terciles PC3",
+      grepl("edad", term) ~ "Edad",
+      grepl("sexo", term) ~ "Sexo",
+      grepl("colesterol", term) ~ "Colesterol total",
+      grepl("glucosa", term) ~ "Glucosa",
+      TRUE ~ term
+    )
+  )
+
+write.csv(tabla_final, file ="Tabla Regresion.csv", sep = " ", na = "-", dec = ".")
+
+# Generar modelo nulo y comparación
+
+modelo_nulo <- glm(
+  sobrepeso ~ 1,
+  data = df_modelo,
+  family = binomial(link = "logit")
+)
+
+anova(
+  modelo_nulo,
+  modelo_1,
+  test = "Chisq"
+)
+
+anova(
+  modelo_nulo,
+  modelo_2,
+  test = "Chisq"
+)
+
+anova(
+  modelo_nulo,
+  modelo_3,
+  test = "Chisq"
+)
+```
+## *Interpretación de la regresión logística*
+
+### Modelo 1: asociación cruda (PCA sin ajuste)
+
+El primer modelo incluyó únicamente los terciles de los tres primeros componentes principales.
+
+No se observaron asociaciones estadísticamente significativas entre los componentes del PCA y el sobrepeso.
+
+Estimaciones:
+
+PC1 (T3 vs T1): OR = 1.18 (IC95%: 0.25–5.61), p = 0.835
+PC2 (T3 vs T1): OR = 0.35 (IC95%: 0.05–2.35), p = 0.279
+PC3 (T2 vs T1): OR = 2.35 (IC95%: 0.46–11.98), p = 0.305
+
+Comparación con modelo nulo:
+
+La comparación global con el modelo nulo no mostró mejora significativa:
+
+χ² = 6.16
+gl = 6
+p = 0.405
+
+El modelo no mejora significativamente respecto a un modelo sin predictores.
+
+### Modelo 2: ajuste sociodemográfico
+
+Se incluyeron edad y sexo además de los componentes principales.
+
+Las variables sociodemográficas tampoco mostraron asociación significativa con el sobrepeso en este modelo.
+
+Edad: OR = 1.02 (IC95%: 0.98–1.07), p = 0.340
+Sexo masculino: OR = 1.24 (IC95%: 0.18–8.33), p = 0.828
+
+Los componentes PCA continuaron sin asociaciones significativas.
+
+Comparación con modelo nulo:
+
+χ² = 11.83
+gl = 8
+p = 0.159
+
+Mejora parcial del modelo, pero sin significación estadística global.
+
+### Modelo 3: ajuste clínico completo
+
+El modelo final incluyó, además de los componentes PCA, edad, sexo, colesterol total y glucosa.
+
+En este modelo:
+
+  Los componentes del PCA no mostraron asociación significativa con sobrepeso.
+  
+  La glucosa mostró asociación significativa positiva:
+    
+    Glucosa: OR = 1.21 (IC95%: 1.01–1.45), p = 0.037
+    
+  El colesterol total mostró una tendencia inversa no significativa:
+  
+    OR = 0.95 (IC95%: 0.90–1.01), p = 0.106
+    
+Comparación con modelo nulo:
+
+El modelo completo mostró una mejora significativa respecto al modelo nulo:
+
+χ² = 19.62
+gl = 10
+p = 0.033*
+
+El modelo completo aporta información estadísticamente significativa para explicar el sobrepeso.
+
+###  Conclusión global
+
+En conjunto, los resultados muestran que los componentes principales derivados del PCA no presentan asociación significativa con la presencia de sobrepeso en ninguno de los modelos evaluados.
+
+Sin embargo:
+
+  El ajuste progresivo mejora la capacidad explicativa del modelo.
+  El modelo completo es estadísticamente significativo frente al modelo nulo.
+  La variable glucosa aparece como el principal factor asociado positivamente con el sobrepeso.
+
+Esto sugiere que, aunque la estructura global de expresión génica resumida por PCA no discrimina el sobrepeso, ciertos marcadores metabólicos individuales pueden tener mayor relevancia explicativa.
+
+
+## CONCLUSIONES
+
+  En este estudio se ha realizado un análisis integral de la expresión génica combinando técnicas descriptivas, PCA y métodos de agrupación.
+  El PCA ha permitido identificar los principales patrones de variabilidad, mientras que la estratificación por terciles y el clustering han evidenciado la existencia de perfiles diferenciados de individuos y genes.
+  La incorporación de variables clínicas, como el IMC, ha facilitado la exploración de posibles relaciones entre expresión génica y características fenotípicas.
+  En conjunto, los resultados muestran el potencial de estas herramientas para el análisis exploratorio y la generación de hipótesis en estudios bioestadísticos.
+  
+  El análisis de la expresión de los 37 genes mediante PCA mostró que la variabilidad se distribuye en múltiples dimensiones, destacando PC1 y PC2 como principales ejes biológicos. PC1 se asoció a genes implicados en la regulación neuroendocrina del apetito (POMC, LEPR, ADCY3), mientras que PC2 reflejó un eje metabólico caracterizado por FTO, LEP y NTRK2. 
+  El clustering de genes identificó grupos con funciones diferenciadas y patrones opuestos de expresión. A nivel de individuos, se observaron tres perfiles con separación principalmente a lo largo de PC1. Sin embargo, no se evidenció una separación clara según categorías de IMC, con un alto solapamiento entre grupos y mayor heterogeneidad en obesidad. Los modelos de regresión logística confirmaron la ausencia de asociación significativa entre los componentes del PCA y el sobrepeso, destacando únicamente la glucosa como factor relevante. 
+  
+  En conjunto, los resultados indican que el IMC no captura completamente la diversidad biológica subyacente en los perfiles de expresión génica, evidenciando la complejidad del sistema metabólico Simpson.
+  
+
+
+
+
+
