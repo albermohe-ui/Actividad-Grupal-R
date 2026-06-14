@@ -167,6 +167,12 @@ head(simpson_df)
 
 summary(simpson_df)
 
+#La base de datos contiene 59 pacientes y 97 variables, entre ellas 37 genes desde ADCY3 hasta UHMK1.
+#Los genes están en formato numérico y no presentan valores perdidos, por lo que pueden usarse directamente en el PCA.
+#Solo se detectaron 5 NA en ingreso_anual_usd, que no afectan al análisis génico. 
+#Como los genes tienen escalas diferentes, es correcto centrar y escalar antes del PCA.
+
+
 ### ============================================================================
 ### 2. CONTROL DE CALIDAD INICIAL
 ### ============================================================================
@@ -201,6 +207,8 @@ na_por_variable_con_na
 
 sum(duplicated(simpson_df))
 
+En el control de calidad se detectaron 5 valores perdidos, todos en ingreso_anual_usd, lo que representa el 8,47 % de esa variable.
+No se encontraron filas duplicadas. Como los valores ausentes no están en las variables génicas, no afectan directamente al PCA.
 
 ```
 
@@ -426,6 +434,8 @@ colSums(is.na(simpson_df[, genes_simpson]))
 
 sum(is.na(simpson_df[, genes_simpson]))
 
+
+
 ### ============================================================================
 ### 2. COMPROBACIÓN DEL FORMATO DE LOS GENES
 ### ============================================================================
@@ -447,6 +457,9 @@ for (gen in genes_simpson) {
 ## Vuelvo a comprobar que todas las variables sean numéricas.
 
 sapply(simpson_df[, genes_simpson], is.numeric)
+
+Se seleccionaron correctamente 37 genes, ubicados entre las columnas 61 y 97, desde ADCY3 hasta UHMK1.
+Ninguna de estas variables génicas presentó valores perdidos, por lo que se conservaron los 59 pacientes para los análisis posteriores.
 
 ### ============================================================================
 ### 3. TEST DE NORMALIDAD DE LOS GENES
@@ -495,6 +508,9 @@ normalidad_genes_resultado
 
 table(normalidad_genes$Interpretacion)
 
+Los 37 genes presentaron valores p menores de 0,05 en el test de Shapiro-Wilk, por lo que ninguno siguió una distribución normal.
+Por este motivo, en los análisis descriptivos posteriores deberán utilizarse la mediana y el rango intercuartílico, junto con pruebas no paramétricas.
+
 ### ============================================================================
 ### 4. PREPARACIÓN DE LOS DATOS PARA EL PCA
 ### ============================================================================
@@ -511,6 +527,9 @@ str(datos_genes)
 ## Confirmo que no existan valores perdidos antes de realizar el PCA.
 
 sum(is.na(datos_genes))
+
+El conjunto usado para el PCA quedó formado por 59 pacientes y 37 genes. 
+Todas las variables génicas son numéricas y no presentan valores perdidos, por lo que el análisis puede realizarse con todos los pacientes y sin aplicar eliminación ni imputación de datos.
 
 ### ============================================================================
 ### 5. ANÁLISIS DE COMPONENTES PRINCIPALES
@@ -534,6 +553,9 @@ summary(pca_genes)
 
 names(pca_genes)
 
+El PCA generó 37 componentes principales, una por cada gen analizado. La PC1 explicó el 12,48 % de la variabilidad y la PC2 el 8,56 %.
+Juntas acumularon el 21,04 %. Las seis primeras componentes explicaron en conjunto el 43,95 % de la variabilidad total. 
+Esto indica que la información está repartida entre varias componentes y no se concentra solo en las dos primeras.
 
 ### ============================================================================
 ### 6. VARIANZA EXPLICADA Y TABLA PCA COMPONENTES Y R2
@@ -625,6 +647,9 @@ simpson_df <- cbind(
 
 names(simpson_df)
 
+Se extrajeron los scores de las primeras seis componentes principales y se añadieron correctamente a simpson_df. 
+Estos scores representan la posición de cada paciente en cada componente y se usarán después para crear terciles, realizar clustering de individuos y ajustar los modelos de regresión logística.
+
 ### ============================================================================
 ### 8. GRÁFICO DE VARIANZA EXPLICADA
 ### ============================================================================
@@ -641,6 +666,11 @@ grafico_varianza <- fviz_eig(
   theme_minimal()
 
 grafico_varianza
+
+El gráfico muestra que PC1 explica el 12,5 % de la variabilidad y PC2 el 8,6 %. A partir de la tercera componente, el porcentaje explicado disminuye de forma gradual y no se observa un “codo” muy marcado. 
+Esto indica que la información de los genes está repartida entre varias componentes y no se concentra únicamente en las dos primeras. 
+Las seis primeras componentes explican aproximadamente el 43,9 % de la variabilidad total.
+
 
 ### ============================================================================
 ### 9. COORDENADAS, COS2, CONTRIBUCIONES Y TABLA PCA CARGAS
@@ -736,6 +766,10 @@ grafico_variables_cos2 <- fviz_pca_var(
 
 grafico_variables_cos2
 
+El gráfico muestra cómo se representan los genes en el plano formado por PC1 y PC2. Los genes con colores más cálidos y flechas más largas tienen una mejor calidad de representación. 
+En PC1 destacan especialmente POMC, ADCY3, LEPR, ANO4 y PCSK1, mientras que en PC2 sobresalen NTRK2 y CADM2. Los genes cercanos al centro tienen una representación más débil en estas dos componentes.
+En conjunto, el gráfico confirma que distintos grupos de genes contribuyen de manera diferente a PC1 y PC2.
+
 ### ============================================================================
 ### 11. CONTRIBUCIÓN DE LOS GENES A LOS COMPONENTES
 ### ============================================================================
@@ -765,6 +799,14 @@ contribucion_pc2 <- fviz_contrib(
   theme_minimal()
 
 contribucion_pc2
+
+En PC1, los genes que más contribuyen son POMC, ANO4, LEPR, ADCY3, PCSK1 y SH2B1. 
+Todos superan claramente la contribución media marcada por la línea roja, por lo que son los genes más importantes para definir esta componente.
+En PC2, destacan principalmente NTRK2, CADM2, NRP1, KSR2, PHIP, FTO y KIAA0586. 
+También se sitúan por encima de la contribución media, indicando que tienen un peso relevante en la construcción de PC2.
+En conjunto, PC1 y PC2 están definidas por grupos distintos de genes, lo que sugiere que cada componente resume patrones diferentes de expresión génica.
+
+
 ```
 
 ## Heatmap correlaciones de Spearman
