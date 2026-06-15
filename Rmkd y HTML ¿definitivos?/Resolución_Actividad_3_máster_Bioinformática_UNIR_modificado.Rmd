@@ -1397,6 +1397,7 @@ tabla_final <- tabla_final %>%
       TRUE ~ term
     )
   )
+tabla_final
 
 write.csv(tabla_final, file ="Tabla Regresion.csv", sep = " ", na = "-", dec = ".")
 
